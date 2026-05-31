@@ -5,7 +5,6 @@ require('dotenv').config();
 
 // Routes
 const paymentRoutes = require('./routes/payment');
-const adminRoutes = require('./routes/admin');
 
 // Connexion à la base de données
 connectDB();
@@ -13,13 +12,12 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware groupés pour la performance
+// Middleware
 app.use(cors());
 app.use(express.json());
 
 // Routes de l'API
 app.use('/api/payment', paymentRoutes);
-app.use('/api/admin', adminRoutes);
 
 // Route de test
 app.get('/', (req, res) => res.send('API is running...'));
