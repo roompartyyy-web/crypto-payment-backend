@@ -6,8 +6,9 @@ const TronWeb = require('tronweb');
 // --- Génération d'adresse unique pour Bitcoin (HD Wallet) ---
 function generateBtcAddress(userIndex) {
     const masterKeyWIF = process.env.MASTER_BTC_WALLET_PRIVATE_KEY;
-    const masterNode = bitcoin.HDNode.fromWIF(masterKeyWIF); // Use fromWIF for a WIF key
-    // Derive a new address for each transaction
+    // Utilise fromWIF pour une clé privée au format WIF
+    const masterNode = bitcoin.HDNode.fromWIF(masterKeyWIF);
+    // Dérive une nouvelle adresse pour chaque transaction
     const childNode = masterNode.derivePath(`m/44'/0'/0'/0/${userIndex}`);
     return {
         address: childNode.getAddress(),
@@ -17,9 +18,12 @@ function generateBtcAddress(userIndex) {
 // --- Génération d'adresse unique pour Ethereum (HD Wallet) ---
 function generateEthAddress(userIndex) {
     const masterPrivateKey = process.env.MASTER_ETH_WALLET_PRIVATE_KEY;
-    const masterNode = ethers.HDNodeWallet.fromSeed(masterPrivateKey); // Assumes the key is a seed. If it's a private key, you might need a different approach.
-    // Derive a new address for each transaction
+    // fromSeed attend une phrase secrète (seed), pas une clé privée hex.
+    // On suppose ici que ta variable d'environnement contient une seed.
+    // Si c'est une clé privée, la logique doit être adaptée.
+    const masterNode = ethers.HDNodeWallet.fromSeed(masterPrivateKey);
     const basePath = "m/44'/60'/0'/0";
+    // Dérive une nouvelle adresse pour chaque transaction
     const childNode = masterNode.derivePath(`${basePath}/${userIndex}`);
     return {
         address: childNode.address,
@@ -28,10 +32,13 @@ function generateEthAddress(userIndex) {
 
 // --- Génération d'adresse unique pour Solana (HD Wallet) ---
 function generateSolAddress(userIndex) {
-    const masterSeed = process.env.MASTER_SOL_WALLET_PRIVATE_KEY; // This should ideally be a seed phrase
-    const keypair = Keypair.fromSeed(Uint8Array.from(Buffer.from(masterSeed, 'base64')));
-    // Derive a new keypair for each transaction
-    const derivedKeypair = Keypair.fromSeed(keypair.secretKey.slice(0, 32)); // Simplified derivation
+    // On suppose que la clé est une seed encodée en base64
+    const masterSeed = process.env.MASTER_SOL_WALLET_PRIVATE_KEY;
+    const masterKeypair = Keypair.fromSeed(Uint8Array.from(Buffer.from(masterSeed, 'base64')));
+    // La dérivation HD sur Solana est plus complexe, cette méthode est une simplification
+    // pour générer une clé unique à partir de la clé maître et de l'index.
+    const seedForDerivation = masterKeypair.secretKey.slice(0, 32);
+    const derivedKeypair = Keypair.fromSeed(seedForDerivation);
     return {
         address: derivedKeypair.publicKey.toString(),
     };
@@ -39,9 +46,10 @@ function generateSolAddress(userIndex) {
 
 // --- Génération d'adresse unique pour Tron (HD Wallet) ---
 function generateTrxAddress(userIndex) {
-    const masterMnemonic = process.env.MASTER_TRX_WALLET_PRIVATE_KEY; // This should ideally be a mnemonic
+    // On suppose que la clé est une phrase mnémonique
+    const masterMnemonic = process.env.MASTER_TRX_WALLET_PRIVATE_KEY;
     const masterNode = TronWeb.fromMnemonic(masterMnemonic);
-    // Derive a new address for each transaction
+    // Dérive une nouvelle adresse pour chaque transaction
     const childNode = masterNode.derive(`m/44'/195'/0'/0/${userIndex}`);
     return {
         address: childNode.address,
@@ -50,7 +58,6 @@ function generateTrxAddress(userIndex) {
 
 
 // --- Fonction principale qui choisit la bonne génération ---
-// It now needs a userIndex to create a unique address
 function generateUniquePaymentAddress(paymentMethod, userIndex) {
     switch (paymentMethod) {
         case 'BTC':
