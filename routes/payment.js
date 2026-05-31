@@ -30,11 +30,15 @@ router.post('/init', async (req, res) => {
         }
 
         // 3. Génération de l'adresse unique et du timer
-        const userIndex = Date.now(); // Utiliser un timestamp comme index simple pour l'instant
-        console.log(`Generating address for method: ${payment_method} with index: ${userIndex}`);
-        const { address: uniquePaymentAddress } = generateUniquePaymentAddress(payment_method, userIndex);
+        // --- CORRECTION ---
+        // On n'envoie plus le userIndex, le service s'en charge tout seul avec un timestamp
+        console.log(`Generating address for method: ${payment_method}`);
+        const { address: uniquePaymentAddress } = generateUniquePaymentAddress(payment_method);
         
-        const expiryTime = new Date(Date.now() + (payment_method === 'CARD' ? 5400000 : 2700000)); // 90 min pour CARD, 45 min pour les autres
+        // --- CORRECTION DES TIMERS ---
+        // 1h30 = 90 minutes = 90 * 60 * 1000 = 5400000 ms
+        // 45 minutes = 45 * 60 * 1000 = 2700000 ms
+        const expiryTime = new Date(Date.now() + (payment_method === 'CARD' ? 5400000 : 2700000));
 
         // 4. Création de la transaction en base de données
         const newTransaction = new Transaction({
