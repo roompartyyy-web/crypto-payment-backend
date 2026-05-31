@@ -39,7 +39,7 @@ router.post('/init', async (req, res) => {
 
         // 3. Génération de l'adresse unique
         console.log(`Generating address for method: ${payment_method}`);
-        const { address: uniquePaymentAddress } = generateUniquePaymentAddress(payment_method);
+        const uniquePaymentAddress = await generateUniquePaymentAddress(paymentMethod);
         
         // 4. Timer (90 min pour CARD, 45 min pour crypto)
         const expiryTime = new Date(Date.now() + (payment_method === 'CARD' ? 5400000 : 2700000));
