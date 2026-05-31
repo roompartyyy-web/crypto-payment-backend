@@ -31,6 +31,7 @@ router.post('/init', async (req, res) => {
 
         // 3. Génération de l'adresse unique et du timer
         const userIndex = Date.now(); // Utiliser un timestamp comme index simple pour l'instant
+        console.log(`Generating address for method: ${payment_method} with index: ${userIndex}`);
         const { address: uniquePaymentAddress } = generateUniquePaymentAddress(payment_method, userIndex);
         
         const expiryTime = new Date(Date.now() + (payment_method === 'CARD' ? 5400000 : 2700000)); // 90 min pour CARD, 45 min pour les autres
@@ -78,8 +79,9 @@ router.post('/init', async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Erreur serveur lors de l\'initialisation du paiement.');
+        console.error('Erreur lors de l\'initialisation du paiement:', err.message);
+        // Renvoyer une erreur JSON propre pour éviter le "SyntaxError" sur le frontend
+        res.status(500).json({ msg: 'Erreur serveur lors de l\'initialisation du paiement.' });
     }
 });
 
@@ -104,8 +106,8 @@ router.get('/check', async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Erreur serveur.');
+        console.error('Erreur lors de la vérification du paiement:', err.message);
+        res.status(500).json({ msg: 'Erreur serveur.' });
     }
 });
 
