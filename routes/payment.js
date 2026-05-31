@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const Transaction = require('../models/Transaction');
-const ReferralCode = require('../models/ReferralCode');
 const { generateUniquePaymentAddress } = require('../services/cryptoService');
 const { notifyAdmin, notifyParrain } = require('../services/telegramService');
 const axios = require('axios');
@@ -17,30 +16,35 @@ router.post('/init', async (req, res) => {
             return res.status(400).json({ msg: 'Données invalides.' });
         }
 
-        // 2. Vérification du code de parrainage
+        // 2. Vérification du code de parrainage (depuis les variables d'environnement)
         let finalUsdtToReceive = tokenAmount;
         let referralInfo = null;
 
         if (referral_code) {
-            referralInfo = await ReferralCode.findOne({ code: referral_code.toUpperCase(), is_active: true });
-            if (referralInfo) {
-                const discount = referralInfo.discount_percent;
-                finalUsdtToReceive = tokenAmount * (1 + discount / 100);
+            try {
+                // On lit la liste des codes depuis la variable d'environnement
+                const referralCodesJson = process.env.REFERRAL_CODES;
+                const referralCodes = JSON.parse(referralCodesJson);
+                referralInfo = referralCodes.find(c => c.code.toUpperCase() === referral_code.toUpperCase());
+
+                if (referralInfo) {
+                    const discount = referralInfo.discount_percent;
+                    finalUsdtToReceive = tokenAmount * (1 + discount / 100);
+                }
+            } catch (e) {
+                console.error('Erreur lecture des codes de parrainage:', e.message);
+                // Si la variable d'environnement est mal formatée, on continue sans le code.
             }
         }
 
-        // 3. Génération de l'adresse unique et du timer
-        // --- CORRECTION ---
-        // On n'envoie plus le userIndex, le service s'en charge tout seul avec un timestamp
+        // 3. Génération de l'adresse unique
         console.log(`Generating address for method: ${payment_method}`);
         const { address: uniquePaymentAddress } = generateUniquePaymentAddress(payment_method);
         
-        // --- CORRECTION DES TIMERS ---
-        // 1h30 = 90 minutes = 90 * 60 * 1000 = 5400000 ms
-        // 45 minutes = 45 * 60 * 1000 = 2700000 ms
+        // 4. Timer (90 min pour CARD, 45 min pour crypto)
         const expiryTime = new Date(Date.now() + (payment_method === 'CARD' ? 5400000 : 2700000));
 
-        // 4. Création de la transaction en base de données
+        // 5. Création de la transaction en base de données
         const newTransaction = new Transaction({
             user_wallet_address: wallet,
             payment_method,
@@ -53,15 +57,14 @@ router.post('/init', async (req, res) => {
             parrain_telegram_id: referralInfo ? referralInfo.parrain_telegram_id : null,
         });
 
-        const savedTransaction = await newTransaction.save();
+        await newTransaction.save();
 
-        // 5. Calcul du montant en crypto à envoyer
+        // 6. Calcul du montant en crypto
         let cryptoAmount = '';
         try {
             if (['BTC', 'ETH', 'SOL'].includes(payment_method)) {
                 const prices = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
                 const priceData = prices.data;
-
                 if (payment_method === 'BTC') cryptoAmount = (usdAmount / priceData.bitcoin.usd).toFixed(8) + ' BTC';
                 if (payment_method === 'ETH') cryptoAmount = (usdAmount / priceData.ethereum.usd).toFixed(6) + ' ETH';
                 if (payment_method === 'SOL') cryptoAmount = (usdAmount / priceData.solana.usd).toFixed(6) + ' SOL';
@@ -74,7 +77,13 @@ router.post('/init', async (req, res) => {
             cryptoAmount = 'Price unavailable';
         }
 
-        // 6. Renvoi des informations au frontend
+        // 7. Notifications Telegram
+        if (referralInfo) {
+            await notifyParrain(referralInfo.parrain_telegram_id, wallet, finalUsdtToReceive);
+        }
+        await notifyAdmin(wallet, payment_method, finalUsdtToReceive, referralInfo ? referralInfo.parrain_name : 'Aucun');
+
+        // 8. Renvoi des informations au frontend
         res.json({
             unique_payment_address: uniquePaymentAddress,
             crypto_amount: cryptoAmount,
@@ -84,38 +93,24 @@ router.post('/init', async (req, res) => {
 
     } catch (err) {
         console.error('Erreur lors de l\'initialisation du paiement:', err.message);
-        // Renvoyer une erreur JSON propre pour éviter le "SyntaxError" sur le frontend
         res.status(500).json({ msg: 'Erreur serveur lors de l\'initialisation du paiement.' });
     }
 });
 
-// GET /payment/check?wallet=...&method=... - Vérifier si une transaction est en cours
+// GET /payment/check
 router.get('/check', async (req, res) => {
     try {
         const { wallet, method } = req.query;
-        const transaction = await Transaction.findOne({
-            user_wallet_address: wallet,
-            payment_method: method,
-            status: 'pending'
-        });
-
+        const transaction = await Transaction.findOne({ user_wallet_address: wallet, payment_method: method, status: 'pending' });
         if (!transaction || transaction.expiry_time < new Date()) {
             return res.status(404).json({ msg: 'not_found' });
         }
-
         const timeLeft = Math.floor((transaction.expiry_time - new Date()) / 1000);
-        res.json({
-            unique_payment_address: transaction.unique_payment_address,
-            time_left_seconds: timeLeft
-        });
-
+        res.json({ unique_payment_address: transaction.unique_payment_address, time_left_seconds: timeLeft });
     } catch (err) {
         console.error('Erreur lors de la vérification du paiement:', err.message);
         res.status(500).json({ msg: 'Erreur serveur.' });
     }
 });
-
-// TODO: Ajouter une route POST /payment/confirm qui sera appelée par le worker de surveillance blockchain
-// pour confirmer un paiement, déclencher l'envoi de USDT et les notifications Telegram.
 
 module.exports = router;
