@@ -1,56 +1,51 @@
 const { ethers } = require('ethers');
-const { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL, Transaction } = require('@solana/web3.js');
+const { Keypair } = require('@solana/web3.js');
 const TronWeb = require('tronweb');
 
-// --- Génération d'adresse Bitcoin (SIMPLE) ---
+// --- Génération d'adresse Bitcoin ---
 function generateBtcAddress() {
-    const wif = process.env.MASTER_BTC_WALLET_PRIVATE_KEY;
-    // On utilise une librairie plus simple si besoin, mais pour l'instant, on suppose que ça marche
-    // Si ça ne marche pas, on retourne une adresse fixe pour le test.
     try {
+        // On importe la librairie à l'intérieur pour éviter les erreurs au démarrage
         const bitcoin = require('bitcoinjs-lib');
-        const keyPair = bitcoin.ECPair.fromWIF(wif);
+        const keyPair = bitcoin.ECPair.fromWIF(process.env.MASTER_BTC_WALLET_PRIVATE_KEY);
         return { address: bitcoin.payments.p2pkh({ pubkey: keyPair.publicKey }).address };
     } catch (e) {
-        console.error("BTC generation failed, using fallback:", e.message);
-        return { address: "TEST_BTC_FALLBACK_ADDRESS" };
+        console.error("Erreur génération BTC:", e.message);
+        throw new Error('La génération d\'adresse BTC a échoué.');
     }
 }
 
-// --- Génération d'adresse Ethereum (SIMPLE) ---
+// --- Génération d'adresse Ethereum ---
 function generateEthAddress() {
-    const privateKey = process.env.MASTER_ETH_WALLET_PRIVATE_KEY;
-    // On suppose que c'est une clé privée hex, pas une seed
     try {
-        return { address: new ethers.Wallet(privateKey).address };
+        return { address: new ethers.Wallet(process.env.MASTER_ETH_WALLET_PRIVATE_KEY).address };
     } catch (e) {
-        console.error("ETH generation failed, using fallback:", e.message);
-        return { address: "TEST_ETH_FALLBACK_ADDRESS" };
+        console.error("Erreur génération ETH:", e.message);
+        throw new Error('La génération d\'adresse ETH a échoué.');
     }
 }
 
-// --- Génération d'adresse Solana (SIMPLE) ---
+// --- Génération d'adresse Solana ---
 function generateSolAddress() {
     try {
-        // Ta clé est une clé privée complète (64 chars hex)
         const privateKeyBytes = Uint8Array.from(Buffer.from(process.env.MASTER_SOL_WALLET_PRIVATE_KEY, 'hex'));
         const keypair = Keypair.fromSecretKey(privateKeyBytes);
         return { address: keypair.publicKey.toString() };
     } catch (e) {
-        console.error("SOL generation failed, using fallback:", e.message);
-        return { address: "TEST_SOL_FALLBACK_ADDRESS" };
+        console.error("Erreur génération SOL:", e.message);
+        throw new Error('La génération d\'adresse SOL a échoué.');
     }
 }
 
-// --- Génération d'adresse Tron (SIMPLE) ---
+// --- Génération d'adresse Tron ---
 function generateTrxAddress() {
     try {
         const tronWeb = new TronWeb({ fullHost: 'https://api.trongrid.io' });
-        const newAccount = tronWeb.utils.account.generateAccount(); // Utilise la méthode correcte
-        return { address: newAccount.address };
+        const account = tronWeb.utils.address.generateAddress(); // Méthode plus directe
+        return { address: account };
     } catch (e) {
-        console.error("TRX generation failed, using fallback:", e.message);
-        return { address: "TEST_TRX_FALLBACK_ADDRESS" };
+        console.error("Erreur génération TRX:", e.message);
+        throw new Error('La génération d\'adresse TRX a échoué.');
     }
 }
 
@@ -62,30 +57,11 @@ function generateUniquePaymentAddress(paymentMethod) {
         case 'USDT ERC20': return generateEthAddress();
         case 'SOL': return generateSolAddress();
         case 'USDT TRC20': return generateTrxAddress();
-        case 'CARD': return generateSolAddress(); // On traite CARD comme SOL pour l'envoi
-        default: throw new Error('Unsupported payment method');
+        case 'CARD': return generateSolAddress(); // Pour CARD, on utilise l'adresse Solana pour la logique d'envoi
+        default: throw new Error('Méthode de paiement non supportée.');
     }
 }
 
-// --- NOUVEAU : Fonction pour envoyer les USDT depuis Solana ---
-async function sendUsdtFromSolana(destinationAddress, amountInUsdt) {
-    const connection = require('../services/connectionService'); // On suppose que tu as un service de connexion
-    const usdtMint = new PublicKey('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'); // Adresse USDT sur Solana
-    
-    // Clé privée du wallet qui détient les USDT
-    const senderPrivateKey = Uint8Array.from(Buffer.from(process.env.MASTER_SOL_WALLET_PRIVATE_KEY, 'hex'));
-    const senderKeypair = Keypair.fromSecretKey(senderPrivateKey);
-    
-    // Logique d'envoi (à implémenter avec les librairies Solana)
-    console.log(`Envoi de ${amountInUsdt} USDT de ${senderKeypair.publicKey.toString()} vers ${destinationAddress}`);
-    // ... code pour créer et signer la transaction Solana ...
-    // const transaction = new Transaction().add(/* ... instructions pour envoyer des USDT ... */);
-    // const signature = await connection.sendTransaction(transaction, [senderKeypair]);
-    // await connection.confirmTransaction(signature);
-    return true; // ou false si échec
-}
-
 module.exports = {
-    generateUniquePaymentAddress,
-    sendUsdtFromSolana // Exporter la nouvelle fonction
+    generateUniquePaymentAddress
 };
